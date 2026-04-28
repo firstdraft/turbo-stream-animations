@@ -105,12 +105,30 @@ The same partial is rendered during SSR and is unaffected — the listener doesn
 
 ## Action → phase mapping
 
-| Stream action                          | Phase  | Default class           |
-|----------------------------------------|--------|-------------------------|
-| `append`, `prepend`, `before`, `after` | enter  | `turbo-stream-enter`    |
-| `replace`, `update`                    | change | `turbo-stream-change`   |
-| `remove`                               | exit   | `turbo-stream-exit`     |
-| `refresh`                              | —      | (delegated to [`turbo-refresh-animations`](https://github.com/firstdraft/turbo-refresh-animations) if installed) |
+Every animated element receives **two classes**: a phase class (umbrella) and an action class (specific). Style whichever level you want.
+
+| Stream action | Phase  | Phase class           | Action class            |
+|---------------|--------|-----------------------|-------------------------|
+| `append`      | enter  | `turbo-stream-enter`  | `turbo-stream-append`   |
+| `prepend`     | enter  | `turbo-stream-enter`  | `turbo-stream-prepend`  |
+| `before`      | enter  | `turbo-stream-enter`  | `turbo-stream-before`   |
+| `after`       | enter  | `turbo-stream-enter`  | `turbo-stream-after`    |
+| `replace`     | change | `turbo-stream-change` | `turbo-stream-replace`  |
+| `update`      | change | `turbo-stream-change` | `turbo-stream-update`   |
+| `remove`      | exit   | `turbo-stream-exit`   | `turbo-stream-remove`   |
+| `refresh`     | —      | — (delegated to [`turbo-refresh-animations`](https://github.com/firstdraft/turbo-refresh-animations) if installed) | — |
+
+If you only style the phase class, every action of that phase animates the same way (e.g. `append` and `prepend` both fade in). If you also style the action class, you can differentiate per action — slide-down for `prepend`, slide-up for `append`, yellow-flash for `update`, full crossfade for `replace`, and so on. CSS specificity does the layering for you:
+
+```css
+/* Default: every enter animates with a fade. */
+.turbo-stream-enter { animation: fade-in 200ms ease-out; }
+
+/* Override: prepended items slide down from above instead. */
+.turbo-stream-prepend { animation: slide-down 200ms ease-out; }
+```
+
+The phase class is overridable per element via `data-turbo-stream-{enter,change,exit}`. Action classes are always the default name; for per-element customization at the action level, use a more specific CSS selector or add your own class via the partial template.
 
 ## How it works
 
@@ -169,9 +187,15 @@ The library could plausibly animate every stream-inserted element automatically.
 
 Required opt-in mirrors `turbo-refresh-animations` and matches the broader Hotwire philosophy of explicit markup over implicit behavior.
 
-### Class names default per phase, not per action
+### Two classes per element: phase (umbrella) and action (specific)
 
-You get three classes: `turbo-stream-enter`, `turbo-stream-change`, `turbo-stream-exit`. Not seven for `append`/`prepend`/`before`/`after`/`replace`/`update`/`remove`. The visual distinction between "added at top" vs "added at bottom" is rarely meaningful enough to warrant separate styles, and per-element overrides cover the cases where it is.
+Every animated element gets both a phase class (`turbo-stream-enter` / `-change` / `-exit`) and an action class (`turbo-stream-append`, `-prepend`, `-before`, `-after`, `-replace`, `-update`, `-remove`).
+
+The phase class is what most apps will style — it gives all enters the same animation, all exits the same animation, and so on. That's the common case and the README's quick start uses only phase classes.
+
+The action class is there for when phase-uniform animation is wrong: when `prepend` should slide down but `append` should slide up, when `update` should flash yellow but `replace` should crossfade, when `remove` should slide left but a hypothetical custom remove-with-confirmation flow shouldn't. Style the action class in those cases; CSS specificity layers it on top of the phase class.
+
+We considered exposing only phase classes (forcing per-action variation through user-side wrappers like passing extra classes via `data-turbo-stream-enter`) but it makes a common-enough case (`prepend` vs `append` should look different) clumsy. Always applying both classes is free at runtime — one extra entry in `classList.add(...)` — and lets users escalate to per-action styling without changing markup or library configuration.
 
 ## Alternatives we evaluated
 
@@ -218,24 +242,40 @@ If you genuinely need source-agnostic animation (frames *and* streams *and* manu
 
 ### 4. Custom `StreamActions` action (TurboPower-style)
 
-Register a single async action and call it from Rails:
+Register a single async action that takes the animation class and duration as attributes — one action covers fade, slide, scale, anything:
 
 ```js
-StreamActions.fade_then_remove = async function () {
-  await Promise.all(this.targetElements.map(animate))
+import { StreamActions } from "@hotwired/turbo"
+
+StreamActions.animate_then_remove = async function () {
+  const className  = this.getAttribute("class") || "fade-out"
+  const fallbackMs = parseInt(this.getAttribute("duration") || "500", 10)
+
+  await Promise.all(this.targetElements.map((el) => animate(el, className, fallbackMs)))
   this.targetElements.forEach((el) => el.remove())
 }
 ```
 
 ```ruby
-turbo_stream.fade_then_remove(@item)
+# Optional Rails helper for nicer ergonomics:
+module TurboStreamActions
+  def animate_then_remove(target, class_name: "fade-out", duration: 500)
+    action(:animate_then_remove, target, class: class_name, duration: duration)
+  end
+end
+Turbo::Streams::TagBuilder.prepend(TurboStreamActions)
+
+turbo_stream.animate_then_remove(@item)
+turbo_stream.animate_then_remove(@item, class_name: "slide-out", duration: 400)
 ```
 
-**Strengths:** named at the call site. Uses Turbo's documented extension point. Composes naturally with [TurboPower](https://github.com/marcoroth/turbo_power) for non-animation actions.
+**Strengths:** named at the call site (the controller code reads as the intent). Uses Turbo's documented extension point. Composes naturally with [TurboPower](https://github.com/marcoroth/turbo_power) for non-animation actions. One parameterized action covers any number of transition styles.
 
-**Where it falls short:** every transition style (`fade_then_remove`, `slide_then_remove`, `scale_then_remove`, …) is its own action. The catalog grows. Per-element variation requires either more actions or attribute parameterization. Doesn't solve enter on its own.
+**Where it falls short — and where this library wins instead:** the call site has to remember to use the animation variant. Every controller that destroys an item needs `turbo_stream.animate_then_remove(@item)` instead of `turbo_stream.remove(@item)`; if any path forgets, that path doesn't animate. Model broadcasts (`broadcasts_to`) emit vanilla `remove` / `replace` actions and don't naturally route through your custom action — you'd have to override the broadcast helper or template.
 
-A single named action is the right answer for one transition type. This library is the right answer when you have several or want them applied uniformly.
+The deeper distinction: **animation policy lives at the call site (custom action) vs. on the rendered partial (this library)**. If "should this destroy animate?" is a controller-level decision that genuinely varies (e.g. one path should animate, a bulk-cleanup path should not), the custom action is more honest — animation is named in the Ruby code that decides. If "should this component animate?" is a property of the component itself (it always animates whenever it's removed, regardless of what triggered the removal), this library is leaner — the partial declares once, every code path picks it up.
+
+For most CRUD-style apps the partial-level policy is what you want, and you don't want to re-think animation routing every time you add a new way to destroy something. That's why this library exists. For apps where animation is genuinely a controller-by-controller decision, custom actions are the better fit.
 
 ### 5. `turbo-refresh-animations`
 

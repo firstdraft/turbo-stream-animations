@@ -1,7 +1,9 @@
-/* Default class names. Override per-element with
-   data-turbo-stream-enter / -change / -exit. */
+/* ===========================================================
+   PHASE CLASSES (umbrella defaults)
+   Style these for animation that's uniform across all actions
+   of a phase. Most apps only need this layer.
+   =========================================================== */
 
-/* Enter */
 .turbo-stream-enter {
   animation: turbo-stream-enter 200ms ease-out;
 }
@@ -10,7 +12,6 @@
   to   { opacity: 1; transform: translateY(0);   }
 }
 
-/* Change */
 .turbo-stream-change {
   animation: turbo-stream-change 800ms ease-out;
 }
@@ -19,7 +20,6 @@
   to   { background-color: inherit; }
 }
 
-/* Exit */
 .turbo-stream-exit {
   animation: turbo-stream-exit 200ms ease-out forwards;
 }
@@ -28,10 +28,42 @@
   to   { opacity: 0; transform: translateX(-25%); }
 }
 
+/* ===========================================================
+   ACTION CLASSES (per-action overrides)
+   Uncomment / customize these to differentiate behavior between
+   actions within the same phase. They override the phase class
+   above thanks to source order; CSS specificity is otherwise equal.
+   =========================================================== */
+
+/* Example: prepended items slide down from above instead of fading. */
+/*
+.turbo-stream-prepend {
+  animation: slide-down-in 200ms ease-out;
+}
+@keyframes slide-down-in {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: translateY(0);     }
+}
+*/
+
+/* Example: replace does a crossfade, update just flashes yellow. */
+/*
+.turbo-stream-replace {
+  animation: turbo-stream-enter 250ms ease-out;
+}
+*/
+
 @media (prefers-reduced-motion: reduce) {
   .turbo-stream-enter,
   .turbo-stream-change,
-  .turbo-stream-exit {
+  .turbo-stream-exit,
+  .turbo-stream-append,
+  .turbo-stream-prepend,
+  .turbo-stream-before,
+  .turbo-stream-after,
+  .turbo-stream-replace,
+  .turbo-stream-update,
+  .turbo-stream-remove {
     animation-duration: 1ms;
     animation-iteration-count: 1;
   }

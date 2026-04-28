@@ -12,10 +12,25 @@ if (canInstall && !window.TurboStreamAnimationsInstalled) {
 const ATTR = "data-turbo-stream-animate"
 const ATTR_PHASE = (phase) => `data-turbo-stream-${phase}`
 
-const DEFAULT_CLASSES = {
+const DEFAULT_PHASE_CLASSES = {
   enter:  "turbo-stream-enter",
   change: "turbo-stream-change",
   exit:   "turbo-stream-exit"
+}
+
+// Every animated element also receives an action-specific class
+// (turbo-stream-append, -prepend, -before, -after, -replace, -update, -remove)
+// so users can target a specific action without having to differentiate
+// elements another way. The phase class is the umbrella; the action class
+// lets you be more specific when you need to.
+const DEFAULT_ACTION_CLASSES = {
+  append:  "turbo-stream-append",
+  prepend: "turbo-stream-prepend",
+  before:  "turbo-stream-before",
+  after:   "turbo-stream-after",
+  replace: "turbo-stream-replace",
+  update:  "turbo-stream-update",
+  remove:  "turbo-stream-remove"
 }
 
 // Stream action -> animation phase. Actions not listed are ignored
@@ -39,10 +54,13 @@ document.addEventListener("turbo:before-stream-render", (event) => {
 
   if (phase === "exit") {
     event.detail.render = async (el) => {
+      const action = el.action
       const targets = collectExitTargets(el).filter((t) => shouldAnimate(t, "exit"))
       if (targets.length === 0) return originalRender(el)
 
-      await Promise.all(targets.map((t) => runAnimation(t, "exit")))
+      await Promise.all(targets.map((t) =>
+        runAnimation(t, classesFor(t, "exit", action), { keepClasses: true })
+      ))
       await originalRender(el)
     }
     return
@@ -50,10 +68,11 @@ document.addEventListener("turbo:before-stream-render", (event) => {
 
   // enter / change: render first, then class the resulting nodes
   event.detail.render = async (el) => {
+    const action = el.action
     const before = snapshotChildren(el)
     await originalRender(el)
     const newNodes = newlyInsertedNodes(el, before, phase)
-    newNodes.forEach((node) => runAnimation(node, phase))
+    newNodes.forEach((node) => runAnimation(node, classesFor(node, phase, action)))
     // Animation runs in the background; the stream pipeline does not block on
     // enter/change. (Blocking would delay subsequent streams behind the animation
     // for no benefit -- the new content is already visible.)
@@ -146,8 +165,13 @@ function shouldAnimate(element, phase) {
   return value.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean).includes(phase)
 }
 
-function classFor(element, phase) {
-  return element.getAttribute(ATTR_PHASE(phase)) || DEFAULT_CLASSES[phase]
+function classesFor(element, phase, action) {
+  // Phase class: overridable per-element via data-turbo-stream-{phase}.
+  // Action class: always the default name. Per-element customization for an
+  // action is best done via CSS selectors against the action class.
+  const phaseClass = element.getAttribute(ATTR_PHASE(phase)) || DEFAULT_PHASE_CLASSES[phase]
+  const actionClass = DEFAULT_ACTION_CLASSES[action]
+  return actionClass ? [phaseClass, actionClass] : [phaseClass]
 }
 
 // ========== ANIMATION RUNNER ==========
@@ -155,9 +179,9 @@ function classFor(element, phase) {
 // animation/transition ends, listens for both end and cancel, and falls back
 // to a computed-style-derived timeout. Filters bubbled events from descendants.
 
-function runAnimation(element, phase) {
+function runAnimation(element, classes, options = {}) {
   return new Promise((resolve) => {
-    const animClass = classFor(element, phase)
+    const { keepClasses = false } = options
     let finished = false
     let timer = null
     let endedCount = 0
@@ -171,9 +195,10 @@ function runAnimation(element, phase) {
       element.removeEventListener("animationcancel", onCancel)
       element.removeEventListener("transitionend", onEnd)
       element.removeEventListener("transitioncancel", onCancel)
-      // For enter/change we leave the class on briefly to let CSS settle, then
-      // remove. For exit we leave it on -- the element is about to be removed.
-      if (phase !== "exit") element.classList.remove(animClass)
+      // For enter/change we remove the classes once the animation is done.
+      // For exit (keepClasses: true) we leave them on -- the element is about
+      // to be removed from the DOM anyway.
+      if (!keepClasses) element.classList.remove(...classes)
       resolve()
     }
     const onEnd = (e) => {
@@ -191,7 +216,7 @@ function runAnimation(element, phase) {
     element.addEventListener("transitionend", onEnd)
     element.addEventListener("transitioncancel", onCancel)
 
-    element.classList.add(animClass)
+    element.classList.add(...classes)
 
     expectedEnds = expectedAnimationEndCount(element) + expectedTransitionEndCount(element)
     const waitMs = maxWaitMsForAnimationOrTransition(element)
