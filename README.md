@@ -107,16 +107,18 @@ The same partial is rendered during SSR and is unaffected — the listener doesn
 | Attribute | Purpose |
 |-----------|---------|
 | `id` | Required for stream targeting (Turbo's requirement, not ours) |
-| `data-turbo-stream-animate` | Opt-in. Present/`""` enables all phases. `"enter,exit"` enables a subset. `"none"` or `"false"` disables. |
-| `data-turbo-stream-enter` | Override enter class for this element |
-| `data-turbo-stream-change` | Override change class for this element |
-| `data-turbo-stream-exit` | Override exit class for this element |
+| `data-turbo-stream-animate` | Opt-in. Present/`""` enables all phases. `"enter,exit"` enables a subset (phase-axis only — action names like `"append"` are not accepted here). `"none"` or `"false"` disables. |
+| `data-turbo-stream-enter` | Override enter phase class for this element |
+| `data-turbo-stream-change` | Override change phase class for this element |
+| `data-turbo-stream-exit` | Override exit phase class for this element |
+
+Two classes are applied to each animated element on every render: a **phase class** (`turbo-stream-enter` / `-change` / `-exit`, overridable per element via the attributes above) and an **action class** (`turbo-stream-append`, `-prepend`, `-before`, `-after`, `-replace`, `-update`, `-remove`, always the default name). There is no per-element override attribute for action classes — they're a stable hook for CSS specificity. Customize per-action behavior by writing more specific CSS selectors against the action class (e.g. `.turbo-stream-prepend { animation: slide-down ... }`) rather than per-element attributes.
 
 ```erb
-<%# Subset: only animate exits %>
+<%# Subset: only animate exits (omit enter and change) %>
 <div id="..." data-turbo-stream-animate="exit">
 
-<%# Per-element class overrides %>
+<%# Per-element phase class overrides %>
 <div id="..."
      data-turbo-stream-animate
      data-turbo-stream-enter="slide-in-down"
