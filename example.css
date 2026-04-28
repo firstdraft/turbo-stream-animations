@@ -1,0 +1,38 @@
+/* Default class names. Override per-element with
+   data-turbo-stream-enter / -change / -exit. */
+
+/* Enter */
+.turbo-stream-enter {
+  animation: turbo-stream-enter 200ms ease-out;
+}
+@keyframes turbo-stream-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* Change */
+.turbo-stream-change {
+  animation: turbo-stream-change 800ms ease-out;
+}
+@keyframes turbo-stream-change {
+  from { background-color: #FFF3CD; }
+  to   { background-color: inherit; }
+}
+
+/* Exit */
+.turbo-stream-exit {
+  animation: turbo-stream-exit 200ms ease-out forwards;
+}
+@keyframes turbo-stream-exit {
+  from { opacity: 1; transform: translateX(0);    }
+  to   { opacity: 0; transform: translateX(-25%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turbo-stream-enter,
+  .turbo-stream-change,
+  .turbo-stream-exit {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+  }
+}
