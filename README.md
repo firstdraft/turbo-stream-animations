@@ -5,9 +5,12 @@ Animates elements as they enter, change, or exit during Turbo Stream actions
 
 A counterpart to [`turbo-refresh-animations`](https://github.com/firstdraft/turbo-refresh-animations) — same opt-in attribute style, same default class names, same animation runner internals — but for the Turbo Stream pipeline rather than page-refresh morphs.
 
+**Worked example:** [`raghubetina/turbo-stream-animations-demo`](https://github.com/raghubetina/turbo-stream-animations-demo) — a minimal Rails 8 app that exercises every phase (enter, change, exit) against a real Turbo Streams pipeline.
+
 ## Table of contents
 
 - [The problem](#the-problem)
+- [Installation](#installation)
 - [Quick start](#quick-start)
 - [Data attributes reference](#data-attributes-reference)
 - [Action → phase mapping](#action--phase-mapping)
@@ -28,6 +31,26 @@ Animating Turbo Stream inserts and removals looks easy and is sneakily not. Two 
 CSS alone can't satisfy constraint 1. A keyframe animation on the partial root, or a `transition` paired with `@starting-style`, runs *every* time the element first renders — and from CSS's perspective, an SSR-rendered node and a stream-inserted node are equally first renders. Distinguishing them requires JavaScript that runs in one context and not the other.
 
 This library hooks `turbo:before-stream-render`, which by definition only fires for stream actions. SSR is automatically excluded. For removals, it uses Turbo's `await newElement.performAction()` contract (see [`turbo/src/elements/stream_element.js`](https://github.com/hotwired/turbo/blob/main/src/elements/stream_element.js)) to delay the actual `.remove()` until the animation completes.
+
+## Installation
+
+There is no npm package yet. Pin via importmap from jsDelivr (which serves GitHub raw at a CDN):
+
+```ruby
+# config/importmap.rb
+pin "turbo-stream-animations",
+  to: "https://cdn.jsdelivr.net/gh/firstdraft/turbo-stream-animations@main/turbo-stream-animations.js"
+```
+
+For a pinned version, replace `@main` with a commit SHA or tag (e.g. `@v0.1.0` once tags exist).
+
+For local development against the library source, drop the file into `vendor/javascript/` and pin to a relative path:
+
+```ruby
+pin "turbo-stream-animations", to: "turbo-stream-animations.js"
+```
+
+If you're not on Rails / not on importmap, the same file works as a plain ES module — just import it directly from your bundler entrypoint.
 
 ## Quick start
 
@@ -311,6 +334,8 @@ The opt-in attributes are intentionally separate. An element may legitimately wa
 
 ## Limitations
 
+- **The library reacts to actions, not to data changes.** A `replace` always fires the change animation, even when the underlying data didn't change — for example, an inline edit flow where clicking "Edit" replaces a card with a form, and clicking "Cancel" replaces the form back with the same unchanged card. Both fire change. Mitigate by *omitting* `data-turbo-stream-animate` from the partials that represent transient UI modes (e.g. the edit form), so entering/leaving that mode doesn't flash. The Cancel-back-to-data direction is a known false positive — the library can't distinguish "data was saved" from "edit was abandoned" since both are the same action shape on the wire. If you need true change detection, either suppress change animation entirely or pass a `changed?` flag through the partial's locals and conditionally emit the attribute.
+- **Animation classes that change rendering presence can drop focus.** Turbo's [`withPreservedFocus`](https://github.com/hotwired/turbo/blob/main/src/core/streams/stream_message_renderer.js) restores focus by id after a stream render — but the library applies its phase/action classes *after* that restoration, on the new node. CSS that briefly sets `display: none`, `visibility: hidden`, or otherwise unrenders the element will knock focus off any input the user is interacting with. Stick to properties that don't affect rendering presence: background-color, color, opacity, transform, filter, box-shadow. (The default and example styles use only safe properties.)
 - **`<turbo-stream action="refresh">` is ignored.** Refresh streams trigger morphs, which are `turbo-refresh-animations`'s domain. If both libraries are installed, refresh streams animate via the morph library; if only this one is installed, refresh streams render without animation.
 - **No FLIP move animations.** When `replace` reorders an element, it snaps to the new position. Add [`turbo-refresh-animations`](https://github.com/firstdraft/turbo-refresh-animations) and switch to morph-based replaces for FLIP support, or implement reordering via a different mechanism.
 - **No form preservation.** Streams don't have an external-broadcast-vs-self problem the way morphs do, so the library has no `data-turbo-stream-preserve` analog.
